@@ -14,9 +14,11 @@ public:
 
     explicit Logger(int log_level);
 
-    [[maybe_unused]] void debugl2(const char *format, ...);
+    void debugl2_noheader(const char *format, ...);
 
-    [[maybe_unused]] void debug(const char *format, ...);
+    void debugl2(const char *format, ...);
+
+    void debug(const char *format, ...);
 
     void info(const char *format, ...);
 
@@ -26,7 +28,7 @@ public:
 
     [[maybe_unused]] void fatal(const char *format, ...);
 
-    void log(const std::string &s, LogLevel log_level);
+    void log(const std::string &s, LogLevel log_level, bool noheader = false);
 
     static std::string formatString(const char *format, ...);
 

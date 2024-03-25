@@ -1,6 +1,7 @@
 #include "bio_reader.h"
 #include <sys/stat.h>
 #include <cstring>
+#include <stdexcept>
 
 using namespace std;
 
@@ -59,7 +60,7 @@ tuple<vector<char *>, vector<char *>, vector<int>, char *> read_fasta(const char
     struct stat st{};
     auto file = fopen(file_name, "r");
     if (!file || stat(file_name, &st) != 0)
-        throw "fasta file not found or not readable";
+        throw runtime_error(string("file ") + file_name + " is not present or not readable");
 
     auto result = new char[st.st_size];
     bool name_state = true;
@@ -78,7 +79,7 @@ tuple<vector<char *>, vector<char *>, vector<int>, char *> read_fasta(const char
                 result[result_i++] = '\0';
                 name_state = true;
                 names.push_back(result + result_i);
-                lens.push_back(static_cast<int &&>(result_i - last_result_i - 1));
+                lens.push_back(static_cast<int>(result_i - last_result_i - 1));
                 continue;
             } else if (ch == '\n' || ch == '\r') {
                 if (last_ch != '\n' && last_ch != '\r' && name_state) {
@@ -93,7 +94,7 @@ tuple<vector<char *>, vector<char *>, vector<int>, char *> read_fasta(const char
         }
     }
     result[result_i] = '\0';
-    lens.push_back(static_cast<int &&>(result_i - last_result_i));
+    lens.push_back(static_cast<int>(result_i - last_result_i));
     fclose(file);
     return make_tuple(std::move(names), std::move(seqs), std::move(lens), result);
 }
@@ -106,7 +107,7 @@ tuple<vector<char *>, vector<char *>, vector<int>, vector<char *>, char *> read_
         return make_tuple(std::move(names), std::move(seqs), std::move(lens), std::move(quality), nullptr);
     struct stat st{};
     if (stat(file_name, &st) != 0)
-        throw "fastq file not found or not readable";
+        throw runtime_error(string("file ") + file_name + " is not present or not readable");
 
     auto result = new char[st.st_size];
 

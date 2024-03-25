@@ -5,7 +5,7 @@ extern int match_score, mismath_penalty, gap_open_penalty, gap_extend_penalty;
 
 #define THREADS_COUNT                       1
 #define MAX_READ_LEN                        2000
-#define ALT_MATCHS                          30
+#define ALT_MATCHS                          10
 #define ALT_RATIO_L1                        0.8
 #define ALT_RATIO_L2                        0.98
 

@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 #include <sys/stat.h>
+#include <stdexcept>
 
 using namespace std;
 
@@ -36,7 +37,7 @@ using namespace std;
     struct stat st{};
     auto file = fopen(file_name, "rb");
     if (!file || stat(file_name, &st) != 0)
-        throw "file is not present or not readable";
+        throw runtime_error(string("file ") + file_name + " is not present or not readable");
     auto all_file = new int[st.st_size / 4];
     fread(all_file, sizeof(int), static_cast<size_t>(st.st_size / 4), file);
     fclose(file);
@@ -102,7 +103,7 @@ using namespace std;
     struct stat st{};
     auto file = fopen(file_name, "rb");
     if (!file || stat(file_name, &st) != 0)
-        throw "file is not present or not readable";
+        throw runtime_error(string("file ") + file_name + " is not present or not readable");
     auto all_file = new int[st.st_size / 4];
     fread(all_file, sizeof(int), static_cast<size_t>(st.st_size / 4), file);
     fclose(file);

@@ -35,7 +35,7 @@ int match_score = DEFAULT_PENALTY_MATCH, mismath_penalty = DEFAULT_PENALTY_MISMA
 int family_decompose_letters = FAMILY_DECOMPOSE_LETTERS, kmer_length = KMER_LENGTH, chunk_size = CHUNK_SIZE, chunk_overlap = CHUNK_OVERLAP;
 int from_read = 0, to_read = 0;
 int log_level_power;
-int chunks_size;
+int chunks_count;
 char *ref_file_name, *output_file_name, *reads_file_name;
 char *ref_genome_should_be_deleted, *reads_should_be_deleted;
 
@@ -159,17 +159,17 @@ void prepare_ref_sketch() {
             auto indexes = read_vector_of_maps_from_file(index_file_name.c_str());
             chunks_sketchs_CT = std::move(indexes[0]);
             chunks_sketchs_GA = std::move(indexes[1]);
-            chunks_size = static_cast<int>(chunks_sketchs_CT.size());
+            chunks_count = static_cast<int>(chunks_sketchs_CT.size());
             logger->info("index read completed");
         } catch (...) {
             read_index = false;
         }
     if (!read_index) {
         read_chunks();
-        chunks_size = static_cast<int>(chunks.size());
-        chunks_sketchs_CT.resize(chunks_size);
-        chunks_sketchs_GA.resize(chunks_size);
-        multiproc(threads_count, make_chunk_sketch, chunks_size);
+        chunks_count = static_cast<int>(chunks.size());
+        chunks_sketchs_CT.resize(chunks_count);
+        chunks_sketchs_GA.resize(chunks_count);
+        multiproc(threads_count, make_chunk_sketch, chunks_count);
     }
     add_time();
     if (!read_index && write_index) {
@@ -177,7 +177,7 @@ void prepare_ref_sketch() {
         write_to_file(index_file_name.c_str(), indexes, 2);
     }
     add_time();
-    logger->info("ref sketchs prepared: %sms: %d records", get_times_str(true), chunks_size);
+    logger->info("ref sketchs prepared: %sms: %d records", get_times_str(true), chunks_count);
 }
 
 int find_read_chunks(const int read_i) {
@@ -262,12 +262,24 @@ void align_chunk_reads_phase2(int chunk_i) {
 
     add_time();
     const auto &chunk = chunks[chunk_i];
+    const auto chunk_extension_amount_before = max(
+            static_cast<int>(min(chunk.chr_num > 0 ? chunk.chr_pos : ref_genome[abs(chunk.chr_num) - 1].size - chunk.chr_pos,
+                                 (unsigned long) MAX_READ_LEN / 4)),
+            0);
+    const auto chunk_extension_amount_after = max(
+            static_cast<int>(min((chunk.chr_num > 0 ? ref_genome[abs(chunk.chr_num) - 1].size - chunk.chr_pos : chunk.chr_pos) - chunk.size,
+                                 (unsigned long) MAX_READ_LEN / 4)),
+            0);
+    const int echunk_size = static_cast<int>(chunk_extension_amount_before + chunk.size + chunk_extension_amount_after);
+    const auto echunk_seq_str = chunk.seq_str - chunk_extension_amount_before;
+    const auto echunk_chr_pos =
+            chunk.chr_num > 0 ? chunk.chr_pos - chunk_extension_amount_before : chunk.chr_pos + chunk_extension_amount_before;
     int operations[3] = {1, -1, 0};
 
-    penalty[0].resize(chunk_size + 10);
-    operation[0].resize(chunk_size + 10);
-    start[0].resize(chunk_size + 10);
-    for (int i = 0; i < chunk.size + 1; ++i) {
+    penalty[0].resize(echunk_size + 10);
+    operation[0].resize(echunk_size + 10);
+    start[0].resize(echunk_size + 10);
+    for (int i = 0; i < echunk_size + 1; ++i) {
         penalty[0][i] = 0;
         operation[0][i] = 0;
         start[0][i] = i;
@@ -279,32 +291,39 @@ void align_chunk_reads_phase2(int chunk_i) {
         const auto &read = reads[read_i];
         for (int i = 1; i < read.size + 1; ++i) {
             if (penalty[i].empty()) {
-                penalty[i].resize(chunk_size + 10);
-                operation[i].resize(chunk_size + 10);
-                start[i].resize(chunk_size + 10);
+                penalty[i].resize(echunk_size + 10);
+                operation[i].resize(echunk_size + 10);
+                start[i].resize(echunk_size + 10);
             }
             penalty[i][0] = gap_open_penalty + gap_extend_penalty * (i - 1);
             operation[i][0] = 1;
             start[i][0] = 0;
         }
-        for (int i = 1; i < read.size + 1; ++i)
-            for (int j = 1; j < chunk.size + 1; ++j) {
+        int min_penalty_j = 0, min_penalty = 0, chunk_from_index = 1, chunk_to_index = echunk_size + 1;
+        int off = static_cast<int>(read.size) / 20;
+        int delta_min = max(off / 10, 2) * gap_open_penalty;
+        for (int i = 1; i < read.size + 1; ++i) {
+            min_penalty_j = 0;
+            min_penalty = penalty[i][0];
+            bool narrowed = chunk_from_index != 1;
+            for (int j = chunk_from_index; j < chunk_to_index; ++j) {
+                bool narrowed_first_col = narrowed && j == chunk_from_index;
                 int m_penalty;
                 if (
-                        read.seq_str[i - 1] == chunk.seq_str[j - 1] // XXX check upper lower case
+                        read.seq_str[i - 1] == echunk_seq_str[j - 1] // XXX check upper lower case
                         ||
                         (is_ct and (read.seq_str[i - 1] == 'T'
 //                        || read.seq_str[i - 1] == 't'
                         ) and
-                         (chunk.seq_str[j - 1] == 'C'
-//                         || chunk.seq_str[j - 1] == 'c'
+                         (echunk_seq_str[j - 1] == 'C'
+//                         || echunk_seq_str[j - 1] == 'c'
                         ))
                         ||
                         (not is_ct and (read.seq_str[i - 1] == 'A'
 //                        || read.seq_str[i - 1] == 'a'
                         ) and
-                         (chunk.seq_str[j - 1] == 'G'
-//                         || chunk.seq_str[j - 1] == 'g'
+                         (echunk_seq_str[j - 1] == 'G'
+//                         || echunk_seq_str[j - 1] == 'g'
                         ))
                         )
                     m_penalty = -match_score;
@@ -312,44 +331,80 @@ void align_chunk_reads_phase2(int chunk_i) {
                     m_penalty = mismath_penalty;
                 int penalties[3] = {
                         penalty[i - 1][j] + (operation[i - 1][j] == 0 ? gap_open_penalty : gap_extend_penalty),
-                        penalty[i][j - 1] + (operation[i][j - 1] == 0 ? gap_open_penalty : gap_extend_penalty),
-                        penalty[i - 1][j - 1] + m_penalty};
-                int starts[3] = {start[i - 1][j], start[i][j - 1], start[i - 1][j - 1]};
+                        penalty[i][narrowed_first_col ? 0 : (j - 1)] + (operation[i][j - 1] == 0 ? gap_open_penalty : gap_extend_penalty),
+                        penalty[i - 1][narrowed_first_col ? 0 : (j - 1)] + m_penalty};
+                int starts[3] = {start[i - 1][j], start[i][narrowed_first_col ? 0 : (j - 1)],
+                                 start[i - 1][narrowed_first_col ? 0 : (j - 1)]};
                 auto min_penalties_i = penalties[2] <= penalties[1] ?
                                        (penalties[2] <= penalties[0] ? 2 : 0) :
                                        (penalties[1] <= penalties[0] ? 1 : 0);
                 penalty[i][j] = penalties[min_penalties_i];
-                operation[i][j] = operations[min_penalties_i];
+                operation[i][j] = narrowed_first_col ? (operations[min_penalties_i] + 4) : operations[min_penalties_i];
                 start[i][j] = starts[min_penalties_i];
+                if (i > read.size / 10) {
+                    if (min_penalty > penalty[i][j]) {
+                        min_penalty = penalty[i][j];
+                        min_penalty_j = j;
+                    }
+                }
             }
-        auto min_penalty = 10000000, min_j = 10000000;
-        for (int j = 0; j < chunk.size + 1; ++j)
-            if (penalty[read.size][j] < min_penalty) {
-                min_penalty = penalty[read.size][j];
-                min_j = j;
+            if (min_penalty_j > 0) {
+#ifdef _DEBUG
+                logger->debugl2_noheader("%d\t%d\t%d\t", min_penalty_j, start[i][min_penalty_j], min_penalty);
+                for (int j = 1; j < chunk_from_index; j++)
+                    logger->debugl2_noheader("\t");
+#endif
+                int new_chunk_from_index = -1, new_chunk_to_index = 0;
+                for (int j = chunk_from_index; j < chunk_to_index; ++j) {
+                    if (penalty[i][j] - min_penalty < delta_min) {
+                        if (new_chunk_from_index == -1)
+                            new_chunk_from_index = j - off;
+                        new_chunk_to_index = j + off;
+                        logger->debugl2_noheader("->");
+                    }
+                    logger->debugl2_noheader("%d\t", penalty[i][j]);
+                }
+                chunk_from_index = max(new_chunk_from_index, 1);
+                chunk_to_index = min(new_chunk_to_index, echunk_size + 1);
+                logger->debugl2_noheader("\n");
             }
+        }
         if (output_map_least_penalty[read_i] * ALT_RATIO_L2 < min_penalty)
             continue;
-        auto read_pos = chunk.chr_pos + (chunk.chr_num > 0 ? start[read.size][min_j] : -min_j);
+        auto read_pos = echunk_chr_pos + (chunk.chr_num > 0 ? start[read.size][min_penalty_j] : -min_penalty_j);
         auto read_chr = abs(chunk.chr_num);
         add_time();
 
         int read_len = static_cast<int>(read.size), reverse_cigar_pos = 0, cigar_pos = 0;
         while (read_len > 0) {
-            switch (operation[read_len][min_j]) {
+            switch (operation[read_len][min_penalty_j]) {
                 case -1:
                     reverse_cigar[reverse_cigar_pos++] = 'D';
-                    min_j -= 1;
+                    min_penalty_j -= 1;
                     break;
+                case 3:
+                    reverse_cigar[reverse_cigar_pos++] = 'D';
+                    min_penalty_j = 0;
+                    break;
+
+                case 5:
                 case 1:
                     reverse_cigar[reverse_cigar_pos++] = 'I';
                     read_len -= 1;
                     break;
+
                 case 0:
                     reverse_cigar[reverse_cigar_pos++] = 'M';
-                    min_j -= 1;
+                    min_penalty_j -= 1;
                     read_len -= 1;
                     break;
+                case 4:
+                    reverse_cigar[reverse_cigar_pos++] = 'M';
+                    min_penalty_j = 0;
+                    read_len -= 1;
+                    break;
+
+
                 default:
                     break;
             }
@@ -420,12 +475,12 @@ int main(int argc, char *argv[]) {
     add_time();
     logger->info("find read chunks time: %d ms", last_time());
 
-    chunks_reads.resize(chunks_size);
+    chunks_reads.resize(chunks_count);
     for (int i = 0; i < reads_chunks.size(); ++i)
         for (auto &read_chunk: reads_chunks[i]) {
             bool is_ct = true;
-            if (read_chunk >= chunks_size) {
-                read_chunk -= chunks_size;
+            if (read_chunk >= chunks_count) {
+                read_chunk -= chunks_count;
                 is_ct = false;
             }
             chunks_reads[read_chunk].emplace_back(i, is_ct);
@@ -441,7 +496,7 @@ int main(int argc, char *argv[]) {
     }
     output_map_least_penalty.resize(reads.size());
     output_map.resize(reads.size());
-    multiproc(threads_count, align_chunk_reads_phase1, chunks_size);
+    multiproc(threads_count, align_chunk_reads_phase1, chunks_count);
     add_time();
     logger->info("align reads to chunks: %d ms", last_time());
 

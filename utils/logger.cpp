@@ -8,14 +8,33 @@ Logger *logger;
 
 Logger::Logger(int log_level) : log_level(static_cast<LogLevel>(log_level)) {}
 
-[[maybe_unused]] void Logger::debugl2(const char *format, ...) {
+#ifdef _DEBUG
+
+void Logger::debugl2_noheader(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    log(formatString(format, args), DEBUGL2, true);
+    va_end(args);
+}
+
+void Logger::debugl2(const char *format, ...) {
     va_list args;
     va_start(args, format);
     log(formatString(format, args), DEBUGL2);
     va_end(args);
 }
 
-[[maybe_unused]] void Logger::debug(const char *const format, ...) {
+#else
+
+void Logger::debugl2_noheader(const char *format, ...) {
+}
+
+void Logger::debugl2(const char *format, ...) {
+}
+
+#endif
+
+void Logger::debug(const char *const format, ...) {
     va_list args;
     va_start(args, format);
     log(formatString(format, args), DEBUG);
@@ -51,7 +70,7 @@ void Logger::info(const char *const format, ...) {
     va_end(args);
 }
 
-void Logger::log(const string &s, LogLevel level) {
+void Logger::log(const string &s, LogLevel level, bool noheader) {
     if (level > this->log_level)
         return;
     time_t ctt = time(nullptr);
@@ -59,8 +78,10 @@ void Logger::log(const string &s, LogLevel level) {
     time[strlen(time) - 1] = '\0';
     const char *s_c_str = s.c_str();
     mtx.lock();
-    printf("%s: %s\n", time, s_c_str);
-//    cout << time << ": " << s << endl;
+    if (noheader)
+        printf("%s", s_c_str);
+    else
+        printf("%s: %s\n", time, s_c_str);
     mtx.unlock();
 }
 
