@@ -1,8 +1,6 @@
 #ifndef CONFIGS_H
 #define CONFIGS_H
 
-extern int match_score, mismath_penalty, gap_open_penalty, gap_extend_penalty;
-
 #define THREADS_COUNT                       1
 #define MAX_READ_LEN                        2000
 #define ALT_MATCHS                          10
@@ -25,6 +23,11 @@ extern int match_score, mismath_penalty, gap_open_penalty, gap_extend_penalty;
 #define DEFAULT_READ_INDEX                  true
 #define DEFAULT_WRITE_INDEX                 true
 
-//#define array_len(x)                ((sizeof(x)) / (sizeof((x)[0])))
 
+struct PenaltyConfig {
+    int match_score = DEFAULT_PENALTY_MATCH;
+    int mismath_penalty = DEFAULT_PENALTY_MISMATCH;
+    int gap_open_penalty = DEFAULT_PENALTY_GAP_OPEN;
+    int gap_extend_penalty = DEFAULT_PENALTY_GAP_EXTEND;
+};
 #endif //CONFIGS_H

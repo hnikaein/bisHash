@@ -26,10 +26,10 @@ void Logger::debugl2(const char *format, ...) {
 
 #else
 
-void Logger::debugl2_noheader(const char *format, ...) {
+void Logger::debugl2_noheader([[maybe_unused]] const char *format, ...) {
 }
 
-void Logger::debugl2(const char *format, ...) {
+inline void Logger::debugl2([[maybe_unused]] const char *format, ...) {
 }
 
 #endif

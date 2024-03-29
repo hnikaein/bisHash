@@ -14,9 +14,9 @@ public:
 
     explicit Logger(int log_level);
 
-    void debugl2_noheader(const char *format, ...);
+    void debugl2_noheader([[maybe_unused]] const char *format, ...);
 
-    void debugl2(const char *format, ...);
+    void debugl2([[maybe_unused]] const char *format, ...);
 
     void debug(const char *format, ...);
 

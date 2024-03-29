@@ -1,4 +1,4 @@
-#include "bio_reader.h"
+#include "sequence_reader.h"
 #include <sys/stat.h>
 #include <cstring>
 #include <stdexcept>
