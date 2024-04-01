@@ -170,7 +170,11 @@ inline int align_chunk_reads_phase1(int chunk_i) {
 }
 
 int main(int argc, char *argv[]) {
-    args = read_args(argc, argv);
+    try {
+        args = read_args(argc, argv);
+    } catch (runtime_error &e) {
+        return EXIT_FAILURE;
+    }
     family_min_hash = new FamilyMinHash(args.family_decompose_letters, args.kmer_length, MAX_BASENUMBER, BIG_PRIME_NUMBER, MIN_HASH_COUNT);
     log_level_power = max(static_cast<int>(pow(10, 8 - args.log_level)), 1);
     logger = new Logger(args.log_level);
@@ -181,12 +185,13 @@ int main(int argc, char *argv[]) {
     logger->info("begin with config: %s", config);
 
     prepare_ref_sketch();
+    if (args.only_create_index)
+        return EXIT_SUCCESS;
     add_time();
     logger->info("sketch loading/preparing time: %d ms", last_time());
 
     tie(reads, reads_should_be_deleted) = read_sequences_from_file(args.reads_file_name, FASTQ);
-    if (args.to_read == 0)
-        args.to_read = static_cast<int>(reads.size());
+    args.to_read = min(static_cast<int>(reads.size()), args.to_read);
     add_time();
     logger->info("reads loading time: %d ms", last_time());
 

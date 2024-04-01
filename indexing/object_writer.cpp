@@ -1,6 +1,4 @@
 #include "object_writer.h"
-#include <cstdio>
-#include <cstring>
 #include <sys/stat.h>
 #include <stdexcept>
 
@@ -14,14 +12,14 @@ using namespace std;
     for (int i = 0; i < size; ++i) {
         auto data = datas[i];
         auto data_size = static_cast<int>(data->size());
-        memcpy(buffer + (write_size++), &data_size, sizeof(int));
+        buffer[write_size++] = data_size;
         for (auto &data_item: *data) {
             int data_item_size = static_cast<int>(data_item.size());
             if (write_size + data_item_size * 3 >= 8 * BUFSIZ) {
                 fwrite(buffer, static_cast<size_t>(write_size), sizeof(int), file);
                 write_size = 0;
             }
-            memcpy(buffer + (write_size++), &data_item_size, sizeof(int));
+            buffer[write_size++] = data_item_size;
             for (auto &data_item_itam: data_item) {
                 buffer[write_size++] = get<0>(data_item_itam);
                 buffer[write_size++] = get<1>(data_item_itam);
@@ -74,7 +72,7 @@ using namespace std;
                 additional_zeros++;
                 continue;
             } else {
-                memcpy(buffer + (write_size++), &additional_zeros, sizeof(int));
+                buffer[write_size++] = additional_zeros;
                 additional_zeros = 0;
             }
         }
@@ -88,9 +86,9 @@ using namespace std;
             }
         }
         if (data_size < MYBUFSIZE) {
-            memcpy(buffer + (write_size++), &data_size, sizeof(int));
+            buffer[write_size++] = data_size;
             if (data_size) {
-                memcpy(buffer + write_size, &data[i][0], data_size * sizeof(int));
+                copy(&data[i][0], &data[i][data_size], buffer + write_size);
                 write_size += data_size;
             }
         }
