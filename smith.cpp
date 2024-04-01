@@ -2,7 +2,6 @@
 #include "configs.h"
 #include "utils/logger.h"
 #include "utils/time_profile.h"
-#include "bio_utils/sequence.h"
 #include <vector>
 #include <cstring>
 
@@ -20,8 +19,8 @@ inline int write_cigar_block(int last_cigar_char_len, char last_cigar_char, char
 
 void align_chunk_reads_phase2(const Sequence &chunk, const vector<pair<int, bool>> &chunk_reads, const vector<Sequence> &reads,
                               const unsigned long chr_size, const PenaltyConfig penalty_config,
-                              vector<vector<pair<int, char *>>> &output_map, vector<int> &output_map_least_penalty) {
-    char reverse_cigar[2 * MAX_READ_LEN], cigar[2 * MAX_READ_LEN], output_buf[5 * MAX_READ_LEN];
+                              vector<vector<pair<int, SamLine *>>> &output_map, vector<int> &output_map_least_penalty) {
+    char reverse_cigar[2 * MAX_READ_LEN], cigar[2 * MAX_READ_LEN];
     vector<vector<int>> penalty(MAX_READ_LEN + 10), operation(MAX_READ_LEN + 10), start(MAX_READ_LEN + 10);
 
     add_time();
@@ -134,7 +133,6 @@ void align_chunk_reads_phase2(const Sequence &chunk, const vector<pair<int, bool
         if (output_map_least_penalty[read_i] * ALT_RATIO_L2 < min_penalty)
             continue;
         auto read_pos = echunk_chr_pos + (chunk.chr_num > 0 ? start[read.size][min_penalty_j] : -min_penalty_j);
-        auto read_chr = abs(chunk.chr_num);
         add_time();
 
         int read_len = static_cast<int>(read.size), reverse_cigar_pos = 0, cigar_pos = 0;
@@ -185,11 +183,10 @@ void align_chunk_reads_phase2(const Sequence &chunk, const vector<pair<int, bool
         cigar_pos += write_cigar_block(last_cigar_char_len, last_cigar_char, cigar + cigar_pos);
         cigar[cigar_pos] = '\0';
         add_time();
-        sprintf(output_buf, "%s\t%d\t%d\t%lu\t%s\n", read.name, read_i, read_chr, read_pos, cigar);
-        char *output_buf_copy = strdup(output_buf);
         pthread_mutex_lock(&output_map_inserting);
         if (output_map_least_penalty[read_i] * ALT_RATIO_L2 > min_penalty) {
-            output_map[read_i].emplace_back(min_penalty, output_buf_copy);
+            SamLine *sam_line = SamLine::create_minimal_mapped_sam_line(&read, chunk.name, read_pos, strdup(cigar), chunk.chr_num < 0);
+            output_map[read_i].emplace_back(min_penalty, sam_line);
             if (output_map_least_penalty[read_i] > min_penalty)
                 output_map_least_penalty[read_i] = min_penalty;
         }

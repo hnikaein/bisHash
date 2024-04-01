@@ -6,14 +6,12 @@
 using namespace std;
 
 Sequence::Sequence(const char *const seq_str, const unsigned long seq_str_len, const char *name,
-                   const char *quality_str, const int chr_num, const unsigned long chr_pos, const bool create_reverse) :
+                   const char *quality_str, const int chr_num, const unsigned long chr_pos, const bool make_reverse) :
         seq_str(seq_str), size(seq_str_len), name(name), quality_str(quality_str), chr_num(chr_num),
         chr_pos(chr_pos) {
-    if (create_reverse) {
-        reverse_seq_str = new char[seq_str_len + 1];
-        get_reversed(reverse_seq_str);
-        delete_flag |= 0b1000;
-    } else
+    if (make_reverse)
+        create_reverse();
+    else
         reverse_seq_str = nullptr;
 }
 
@@ -34,6 +32,12 @@ Sequence::~Sequence() {
         delete[] quality_str;
     if (delete_flag & 0b1000)
         delete[] reverse_seq_str;
+}
+
+void Sequence::create_reverse() {
+    reverse_seq_str = new char[size + 1];
+    get_reversed(reverse_seq_str);
+    delete_flag |= 0b1000;
 }
 
 void Sequence::get_reversed(char *destination) const {
@@ -86,7 +90,7 @@ vector<Sequence> Sequence::chunkenize_big_sequence(const vector<Sequence> &seqs,
                         Logger::formatString("%s_%08d_%08d_%lu", seq.name, chr_num_with_reverse_applied,
                                              chunk_i, chunk_size).c_str());
 #else
-                char *chunk_name = nullptr;
+                const char *chunk_name = seq.name;
 #endif
                 Sequence s1(seq_str_with_reverse_applied + e1,
                             min(static_cast<unsigned>(chunk_size), static_cast<unsigned>(seq.size - e1)),

@@ -1,11 +1,13 @@
 #include <algorithm>
 #include <map>
 #include <cmath>
+#include <climits>
 #include "configs.h"
 #include "utils/multiproc.h"
 #include "utils/logger.h"
 #include "utils/time_profile.h"
 #include "bio_utils/sequence_reader.h"
+#include "bio_utils/sam_writer.h"
 #include "hashing/family_min_hash.h"
 #include "indexing/object_writer.h"
 #include "smith.h"
@@ -21,7 +23,7 @@ vector<Sequence> ref_genome, chunks, reads;
 vector<vector<tuple<int, int, int>>> chunks_sketchs_CT, chunks_sketchs_GA;
 vector<vector<int>> reads_chunks;
 vector<vector<pair<int, bool>>> chunks_reads;
-vector<vector<pair<int, char *>>> output_map;
+vector<vector<pair<int, SamLine *>>> output_map;
 vector<int> output_map_least_penalty;
 
 FILE *output_file;
@@ -214,18 +216,30 @@ int main(int argc, char *argv[]) {
         add_time();
         logger->info("read_chunks: %d ms", last_time());
     }
-    output_map_least_penalty.resize(reads.size());
+    output_map_least_penalty.resize(reads.size(), INT_MAX);
     output_map.resize(reads.size());
     multiproc(args.threads_count, align_chunk_reads_phase1, chunks_count);
     add_time();
     logger->info("align reads to chunks: %d ms", last_time());
 
     output_file = fopen(args.output_file_name, "w");
-    for (int i = 0; i < output_map.size(); ++i) {
+    for (int i = args.from_read; i < args.to_read; ++i) {
+        if (output_map[i].empty()) {
+            SamLine::create_unmapped_sam_line(&reads[i]).print_to_file(output_file);
+            continue;
+        }
         int min_penalty = output_map_least_penalty[i];
-        for (auto &p: output_map[i]) {
-            if (p.first < ALT_RATIO_L2 * min_penalty)
-                fprintf(output_file, "%s", p.second);
+        sort(output_map[i].begin(), output_map[i].end());
+        for (int j = 0; j < output_map[i].size(); ++j) {
+            auto &p = output_map[i][j];
+            if (j < ALT_MATCHS && p.first < ALT_RATIO_L2 * min_penalty) {
+                if (j != 0)
+                    p.second->set_as_secondary();
+                if (p.second->is_reversed() && reads[i].reverse_seq_str == nullptr)
+                    reads[i].create_reverse();
+                p.second->print_to_file(output_file);
+            }
+            delete p.second->cigar;
             free(p.second);
         }
     }

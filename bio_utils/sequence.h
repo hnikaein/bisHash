@@ -16,6 +16,8 @@ public:
 
     Sequence(Sequence &&sequence) noexcept;
 
+    void create_reverse();
+
     void get_reversed(char *destination = nullptr) const;
 
     [[maybe_unused]] [[nodiscard]] Sequence get_reversed() const;

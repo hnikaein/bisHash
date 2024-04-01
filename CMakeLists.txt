@@ -17,14 +17,21 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-result")
 add_executable(bisHash
         main.cpp
         configs.h
-        bio_utils/sequence_reader.h bio_utils/sequence_reader.cpp bio_utils/sequence.h bio_utils/sequence.cpp
-        hashing/hash_utils.h hashing/hash_utils.cpp
-        utils/logger.h utils/logger.cpp utils/time_profile.h utils/time_profile.cpp
-        utils/multiproc.h utils/multiproc.cpp
-        hashing/family_min_hash.cpp hashing/family_min_hash.h
-        indexing/object_writer.h indexing/object_writer.cpp
         smith.h smith.cpp
         params.h params.cpp
+
+        hashing/hash_utils.h hashing/hash_utils.cpp
+        hashing/family_min_hash.cpp hashing/family_min_hash.h
+
+        indexing/object_writer.h indexing/object_writer.cpp
+
+        bio_utils/sequence_reader.h bio_utils/sequence_reader.cpp
+        bio_utils/sequence.h bio_utils/sequence.cpp
+        bio_utils/sam_writer.h bio_utils/sam_writer.cpp
+
+        utils/logger.h utils/logger.cpp
+        utils/time_profile.h utils/time_profile.cpp
+        utils/multiproc.h utils/multiproc.cpp
 )
 
 target_link_libraries(bisHash -lz -lm -lpthread)
