@@ -2,6 +2,7 @@
 #include <map>
 #include <cmath>
 #include <climits>
+#include <set>
 #include "configs.h"
 #include "utils/multiproc.h"
 #include "utils/logger.h"
@@ -21,6 +22,7 @@ FamilyMinHash *family_min_hash;
 
 vector<Sequence> ref_genome, chunks, reads;
 vector<vector<tuple<int, int, int>>> chunks_sketchs_CT, chunks_sketchs_GA;
+vector<pair<map<int, vector<int>>, map<int, vector<int>>>> chunks_sketchs_CT_tree, chunks_sketchs_GA_tree;
 vector<vector<int>> reads_chunks;
 vector<vector<pair<int, bool>>> chunks_reads;
 vector<vector<pair<int, SamLine *>>> output_map;
@@ -45,9 +47,17 @@ int make_chunk_sketch(const int chunk_i) {
     chunks_sketchs_CT[chunk_i] = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
                                                              static_cast<int>(chunks[chunk_i].size),
                                                              SKETCH_MODE_WITH_C_T_CONVERSION);
+    for (const auto &part: chunks_sketchs_CT[chunk_i]) {
+        chunks_sketchs_CT_tree[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
+        chunks_sketchs_CT_tree[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
+    }
     chunks_sketchs_GA[chunk_i] = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
                                                              static_cast<int>(chunks[chunk_i].size),
                                                              SKETCH_MODE_WITH_G_A_CONVERSION);
+    for (const auto &part: chunks_sketchs_GA[chunk_i]) {
+        chunks_sketchs_GA_tree[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
+        chunks_sketchs_GA_tree[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
+    }
     return 1;
 }
 
@@ -74,6 +84,8 @@ void prepare_ref_sketch() {
         chunks_count = static_cast<int>(chunks.size());
         chunks_sketchs_CT.resize(chunks_count);
         chunks_sketchs_GA.resize(chunks_count);
+        chunks_sketchs_CT_tree.resize((int) pow(MAX_BASENUMBER, args.family_decompose_letters));
+        chunks_sketchs_GA_tree.resize((int) pow(MAX_BASENUMBER, args.family_decompose_letters));
         multiproc(args.threads_count, make_chunk_sketch, chunks_count);
     }
     add_time();
@@ -92,57 +104,56 @@ int find_read_chunks(const int read_i) {
                                                       SKETCH_MODE_WITH_C_T_CONVERSION);
     auto read_sketch_ga = family_min_hash->get_sketch(read->seq_str, static_cast<int>(read->size),
                                                       SKETCH_MODE_WITH_G_A_CONVERSION);
-    vector<int> max_sim_i(ALT_MATCHS);
-    vector<int> max_sim(ALT_MATCHS);
-    int last_inserted_j = 0;
+    int *similarity = new int[chunks_count * 2 + 10];
+    int *similarity_l = similarity;
     auto read_sketch = &read_sketch_ct;
-    auto chunks_sketchs = &chunks_sketchs_CT;
-    auto chunks_sketchs_i = -1;
+    auto chunks_sketchs_tree = &chunks_sketchs_CT_tree;
     for (int sketch_type = 0; sketch_type < 2; ++sketch_type) {
         if (sketch_type == 1) {
             read_sketch = &read_sketch_ga;
-            chunks_sketchs = &chunks_sketchs_GA;
+            chunks_sketchs_tree = &chunks_sketchs_GA_tree;
+            similarity_l = similarity + chunks_count;
         }
-        for (const auto &chunk_sketch: *chunks_sketchs) {
-            chunks_sketchs_i++;
-            if (max_sim.size() > 3 * ALT_MATCHS) {
-                max_sim.resize(2 * ALT_MATCHS);
-                max_sim.reserve(4 * ALT_MATCHS);
-                max_sim_i.resize(2 * ALT_MATCHS);
-                max_sim_i.reserve(4 * ALT_MATCHS);
-            }
-            int sketch_sim = 0;
-            int chunk_sketch_i = 0;
-            for (const auto &read_sketch_i: *read_sketch)
-                while (chunk_sketch_i < chunk_sketch.size()) {
-                    if (get<0>(chunk_sketch[chunk_sketch_i]) > get<0>(read_sketch_i))
-                        break;
-                    if (get<0>(chunk_sketch[chunk_sketch_i]) == get<0>(read_sketch_i))
-                        if (get<1>(chunk_sketch[chunk_sketch_i]) == get<2>(read_sketch_i) ||
-                            get<2>(chunk_sketch[chunk_sketch_i]) == get<2>(read_sketch_i))
-                            sketch_sim += 1;
-                    chunk_sketch_i++;
-                }
-            if (sketch_sim <= max_sim[ALT_MATCHS - 1])
+        for (const auto &read_sketch_i: *read_sketch) {
+            set<int> matches;
+            for (const auto &chunk_i: (*chunks_sketchs_tree)[get<0>(read_sketch_i)].first[get<1>(read_sketch_i)])
+                matches.insert(chunk_i);
+            for (const auto &chunk_i: (*chunks_sketchs_tree)[get<0>(read_sketch_i)].second[get<2>(read_sketch_i)])
+                matches.insert(chunk_i);
+            for (const auto &match: matches)
+                similarity_l[match] += 1;
+        }
+    }
+    int last_inserted_j = 0;
+    vector<int> max_sim_i(ALT_MATCHS);
+    vector<int> max_sim(ALT_MATCHS);
+    for (int i = 0; i < chunks_count * 2; ++i) {
+        if (max_sim.size() > 3 * ALT_MATCHS) {
+            max_sim.resize(2 * ALT_MATCHS);
+            max_sim.reserve(4 * ALT_MATCHS);
+            max_sim_i.resize(2 * ALT_MATCHS);
+            max_sim_i.reserve(4 * ALT_MATCHS);
+        }
+        int sketch_sim = similarity[i];
+        if (sketch_sim <= max_sim[ALT_MATCHS - 1])
+            continue;
+        if (max_sim_i[last_inserted_j] == i - 1) {
+            if (max_sim[last_inserted_j] < sketch_sim) {
+                max_sim_i.erase(max_sim_i.begin() + last_inserted_j);
+                max_sim.erase(max_sim.begin() + last_inserted_j);
+            } else {
+                if (max_sim[last_inserted_j] == sketch_sim)
+                    max_sim_i[last_inserted_j] = i;
                 continue;
-            if (max_sim_i[last_inserted_j] == chunks_sketchs_i - 1) {
-                if (max_sim[last_inserted_j] < sketch_sim) {
-                    max_sim_i.erase(max_sim_i.begin() + last_inserted_j);
-                    max_sim.erase(max_sim.begin() + last_inserted_j);
-                } else {
-                    if (max_sim[last_inserted_j] == sketch_sim)
-                        max_sim_i[last_inserted_j] = chunks_sketchs_i;
-                    continue;
-                }
             }
-            for (int j = 0; j < ALT_MATCHS; ++j)
-                if (sketch_sim > max_sim[j]) {
-                    max_sim_i.insert(max_sim_i.begin() + j, chunks_sketchs_i);
-                    max_sim.insert(max_sim.begin() + j, sketch_sim);
-                    last_inserted_j = j;
-                    break;
-                }
         }
+        for (int j = 0; j < ALT_MATCHS; ++j)
+            if (sketch_sim > max_sim[j]) {
+                max_sim_i.insert(max_sim_i.begin() + j, i);
+                max_sim.insert(max_sim.begin() + j, sketch_sim);
+                last_inserted_j = j;
+                break;
+            }
     }
     int idx = 0;
     if (max_sim[0] != 0)
@@ -151,6 +162,9 @@ int find_read_chunks(const int read_i) {
                 break;
     max_sim_i.resize(min(idx, ALT_MATCHS));
     reads_chunks[read_i] = std::move(max_sim_i);
+    delete[] similarity;
+    if (max_sim_i.empty())
+        return 0;
     return 1;
 }
 
