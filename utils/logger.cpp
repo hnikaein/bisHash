@@ -83,6 +83,7 @@ void Logger::log(const string &s, LogLevel level, bool noheader) {
     else
         printf("%s: %s\n", time, s_c_str);
     mtx.unlock();
+    fflush(stdout);
 }
 
 string Logger::formatString(const char *const format, va_list args) {

@@ -11,9 +11,6 @@ extern Logger *logger;
 pthread_mutex_t output_map_inserting;
 
 inline int write_cigar_block(int last_cigar_char_len, char last_cigar_char, char *cigar) {
-    if (last_cigar_char_len == 1)
-        return sprintf(cigar, "%c", last_cigar_char);
-    else
         return sprintf(cigar, "%d%c", last_cigar_char_len, last_cigar_char);
 }
 
