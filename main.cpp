@@ -3,6 +3,7 @@
 #include <cmath>
 #include <climits>
 #include <set>
+#include <cstring>
 #include "configs.h"
 #include "utils/multiproc.h"
 #include "utils/logger.h"
@@ -21,7 +22,6 @@ extern Logger *logger;
 FamilyMinHash *family_min_hash;
 
 vector<Sequence> ref_genome, chunks, reads;
-vector<vector<tuple<int, int, int>>> chunks_sketchs_CT, chunks_sketchs_GA;
 vector<pair<map<int, vector<int>>, map<int, vector<int>>>> chunks_sketchs_CT_tree, chunks_sketchs_GA_tree;
 vector<vector<int>> reads_chunks;
 vector<vector<pair<int, bool>>> chunks_reads;
@@ -44,17 +44,17 @@ void remove_vector(vector<T> &vec) {
 
 // Calculate the chunk sketch and add the chunk id to hashes that exist in chunk sketch
 int make_chunk_sketch(const int chunk_i) {
-    chunks_sketchs_CT[chunk_i] = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
-                                                             static_cast<int>(chunks[chunk_i].size),
-                                                             SKETCH_MODE_WITH_C_T_CONVERSION);
-    for (const auto &part: chunks_sketchs_CT[chunk_i]) {
+    auto chunk_sketch_CT = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
+                                                       static_cast<int>(chunks[chunk_i].size),
+                                                       SKETCH_MODE_WITH_C_T_CONVERSION);
+    for (const auto &part: chunk_sketch_CT) {
         chunks_sketchs_CT_tree[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
         chunks_sketchs_CT_tree[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
     }
-    chunks_sketchs_GA[chunk_i] = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
-                                                             static_cast<int>(chunks[chunk_i].size),
-                                                             SKETCH_MODE_WITH_G_A_CONVERSION);
-    for (const auto &part: chunks_sketchs_GA[chunk_i]) {
+    auto chunk_sketch_GA = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
+                                                       static_cast<int>(chunks[chunk_i].size),
+                                                       SKETCH_MODE_WITH_G_A_CONVERSION);
+    for (const auto &part: chunk_sketch_GA) {
         chunks_sketchs_GA_tree[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
         chunks_sketchs_GA_tree[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
     }
@@ -67,14 +67,21 @@ void read_chunks() {
 }
 
 void prepare_ref_sketch() {
-    auto index_file_name = config_str + ".cbhs";
+    auto index_file_name = config_str + ".bshs";
     add_time();
     if (args.read_index)
         try {
             auto indexes = read_vector_of_maps_from_file(index_file_name.c_str());
-            chunks_sketchs_CT = std::move(indexes[0]);
-            chunks_sketchs_GA = std::move(indexes[1]);
-            chunks_count = static_cast<int>(chunks_sketchs_CT.size());
+            chunks_sketchs_CT_tree = std::move(indexes[0]);
+            chunks_sketchs_GA_tree = std::move(indexes[1]);
+            delete[] indexes;
+            chunks_count = 0;
+            for (const auto &te: {&chunks_sketchs_CT_tree, &chunks_sketchs_GA_tree})
+                for (const auto &te1: *te)
+                    for (const auto &te2: {&te1.first, &te1.second})
+                        for (const auto &te3: *te2)
+                            chunks_count = max(chunks_count, *max_element(te3.second.begin(), te3.second.end()));
+            chunks_count++;
             logger->info("index read completed");
         } catch (...) {
             args.read_index = false;
@@ -82,15 +89,13 @@ void prepare_ref_sketch() {
     if (!args.read_index) {
         read_chunks();
         chunks_count = static_cast<int>(chunks.size());
-        chunks_sketchs_CT.resize(chunks_count);
-        chunks_sketchs_GA.resize(chunks_count);
         chunks_sketchs_CT_tree.resize((int) pow(MAX_BASENUMBER, args.family_decompose_letters));
         chunks_sketchs_GA_tree.resize((int) pow(MAX_BASENUMBER, args.family_decompose_letters));
         multiproc(args.threads_count, make_chunk_sketch, chunks_count);
     }
     add_time();
     if (!args.read_index && args.write_index) {
-        vector<vector<tuple<int, int, int>>> *indexes[] = {&chunks_sketchs_CT, &chunks_sketchs_GA};
+        vector<pair<map<int, vector<int>>, map<int, vector<int>>>> *indexes[] = {&chunks_sketchs_CT_tree, &chunks_sketchs_GA_tree};
         write_to_file(index_file_name.c_str(), indexes, 2);
     }
     add_time();
@@ -104,7 +109,9 @@ int find_read_chunks(const int read_i) {
                                                       SKETCH_MODE_WITH_C_T_CONVERSION);
     auto read_sketch_ga = family_min_hash->get_sketch(read->seq_str, static_cast<int>(read->size),
                                                       SKETCH_MODE_WITH_G_A_CONVERSION);
-    int *similarity = new int[chunks_count * 2 + 10];
+    int similarit_length = chunks_count * 2 + 10;
+    int *similarity = new int[similarit_length];
+    memset(similarity, 0, sizeof(int) * similarit_length);
     int *similarity_l = similarity;
     auto read_sketch = &read_sketch_ct;
     auto chunks_sketchs_tree = &chunks_sketchs_CT_tree;
@@ -211,8 +218,8 @@ int main(int argc, char *argv[]) {
 
     reads_chunks.resize(reads.size());
     multiproc(args.threads_count, find_read_chunks, args.to_read, args.from_read);
-    remove_vector<vector<tuple<int, int, int>>>(chunks_sketchs_CT);
-    remove_vector<vector<tuple<int, int, int>>>(chunks_sketchs_GA);
+    remove_vector<pair<map<int, vector<int>>, map<int, vector<int>>>>(chunks_sketchs_CT_tree);
+    remove_vector<pair<map<int, vector<int>>, map<int, vector<int>>>>(chunks_sketchs_GA_tree);
     add_time();
     logger->info("find read chunks time: %d ms", last_time());
 
@@ -258,14 +265,14 @@ int main(int argc, char *argv[]) {
                     reads[i].create_reverse();
                 p.second->print_to_file(output_file);
             }
-            delete p.second->cigar;
-            free(p.second);
+            free((char *) p.second->cigar);
+            delete p.second;
         }
     }
     fclose(output_file);
     add_time();
     logger->info("outputing: %d ms", last_time());
-    free(ref_genome_should_be_deleted);
-    free(reads_should_be_deleted);
+    delete[] ref_genome_should_be_deleted;
+    delete[] reads_should_be_deleted;
     return 0;
 }

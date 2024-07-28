@@ -2,9 +2,11 @@
 #include <sys/stat.h>
 #include <stdexcept>
 
+int check_buffer(FILE *file, const int *buffer, int write_size);
+
 using namespace std;
 
-[[maybe_unused]] void write_to_file(const char *file_name, vector<vector<tuple<int, int, int>>> **datas, int size) {
+[[maybe_unused]] void write_to_file(const char *file_name, vector<pair<map<int, vector<int>>, map<int, vector<int>>>> **datas, int size) {
     auto file = fopen(file_name, "wb");
     const int MYBUFSIZE = 10 * BUFSIZ;
     int buffer[MYBUFSIZE], write_size = 0;
@@ -13,17 +15,20 @@ using namespace std;
         auto data = datas[i];
         auto data_size = static_cast<int>(data->size());
         buffer[write_size++] = data_size;
-        for (auto &data_item: *data) {
-            int data_item_size = static_cast<int>(data_item.size());
-            if (write_size + data_item_size * 3 >= 8 * BUFSIZ) {
-                fwrite(buffer, static_cast<size_t>(write_size), sizeof(int), file);
-                write_size = 0;
-            }
-            buffer[write_size++] = data_item_size;
-            for (auto &data_item_itam: data_item) {
-                buffer[write_size++] = get<0>(data_item_itam);
-                buffer[write_size++] = get<1>(data_item_itam);
-                buffer[write_size++] = get<2>(data_item_itam);
+        for (const auto &data_maps: *data) {
+            for (const auto *data_map: {&data_maps.first, &data_maps.second}) {
+                int data_map_size = static_cast<int>(data_map->size());
+                buffer[write_size++] = data_map_size;
+                write_size = check_buffer(file, buffer, write_size);
+                for (const auto &data_item_pair: *data_map) {
+                    buffer[write_size++] = data_item_pair.first;
+                    buffer[write_size++] = static_cast<int>(data_item_pair.second.size());
+                    write_size = check_buffer(file, buffer, write_size);
+                    for (const auto &data_item_item_item: data_item_pair.second) {
+                        buffer[write_size++] = data_item_item_item;
+                        write_size = check_buffer(file, buffer, write_size);
+                    }
+                }
             }
         }
     }
@@ -31,7 +36,15 @@ using namespace std;
     fclose(file);
 }
 
-[[maybe_unused]] vector<vector<tuple<int, int, int>>> *read_vector_of_maps_from_file(char const *file_name) {
+int check_buffer(FILE *file, const int *buffer, int write_size) {
+    if (write_size >= 9 * BUFSIZ) {
+        fwrite(buffer, static_cast<size_t>(write_size), sizeof(int), file);
+        write_size = 0;
+    }
+    return write_size;
+}
+
+[[maybe_unused]] vector<pair<map<int, vector<int>>, map<int, vector<int>>>> *read_vector_of_maps_from_file(char const *file_name) {
     struct stat st{};
     auto file = fopen(file_name, "rb");
     if (!file || stat(file_name, &st) != 0)
@@ -41,17 +54,24 @@ using namespace std;
     fclose(file);
     auto buffer_p = all_file;
     int data_size = *(buffer_p++);
-    auto result = new vector<vector<tuple<int, int, int>>>[data_size];
+    auto result = new vector<pair<map<int, vector<int>>, map<int, vector<int>>>>[data_size];
     for (int i = 0; i < data_size; ++i) {
         int vec_size = *(buffer_p++);
         result[i].resize(vec_size);
         for (int j = 0; j < vec_size; ++j) {
-            int map_size = *(buffer_p++);
-            for (int k = 0; k < map_size; ++k) {
-                int first = *(buffer_p++);
-                int second = *(buffer_p++);
-                int third = *(buffer_p++);
-                result[i][j].emplace_back(first, second, third);
+            auto data_map = &result[i][j].first;
+            for (int l = 0; l < 2; ++l) {
+                if (l == 1)
+                    data_map = &result[i][j].second;
+                int map_size = *(buffer_p++);
+                for (int k = 0; k < map_size; ++k) {
+                    int first = *(buffer_p++);
+                    int second_size = *(buffer_p++);
+                    vector<int> second(second_size);
+                    for (int m = 0; m < second_size; ++m)
+                        second[m] = *(buffer_p++);
+                    (*data_map)[first] = std::move(second);
+                }
             }
         }
     }
