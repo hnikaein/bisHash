@@ -10,10 +10,10 @@
 #define CHUNK_SIZE                          7000
 #define CHUNK_OVERLAP                       MAX_READ_LEN
 
-#define MAX_BASENUMBER                      8
+#define MAX_BASENUMBER                      5
 #define FAMILY_DECOMPOSE_LETTERS            5
 #define KMER_LENGTH                         20
-#define BIG_PRIME_NUMBER                    49979693 // 16777215 14868587 16777259
+#define BIG_PRIME_NUMBER                    16777215 // 49979693 16777215 14868587 16777259
 #define MIN_HASH_COUNT                      2
 
 #define DEFAULT_PENALTY_MATCH               5

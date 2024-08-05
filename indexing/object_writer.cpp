@@ -1,17 +1,33 @@
 #include "object_writer.h"
 #include <sys/stat.h>
 #include <stdexcept>
-
-int check_buffer(FILE *file, const int *buffer, int write_size);
+#include <cstring>
 
 using namespace std;
 
-[[maybe_unused]] void write_to_file(const char *file_name, vector<pair<map<int, vector<int>>, map<int, vector<int>>>> **datas, int size) {
+const int MYBUFSIZE = 10 * BUFSIZ;
+
+inline void fill_dest_from_src(const int *src, const int &src_size, int &src_read, int *dest, const int &dest_size, int &dest_filled) {
+    int remained = min(src_size - src_read, dest_size - dest_filled);
+    memcpy(dest + dest_filled, src + src_read, remained * sizeof(int));
+    dest_filled += remained;
+    src_read += remained;
+}
+
+inline void check_buffer(FILE *file, const int *buffer, int &write_size) {
+    if (write_size >= 9 * BUFSIZ) {
+        fwrite(buffer, static_cast<size_t>(write_size), sizeof(int), file);
+        write_size = 0;
+    }
+}
+
+[[maybe_unused]] void write_data(const char *file_name, vector<pair<map<int, vector<int>>, map<int, vector<int>>>> **datas, int datas_size,
+                                 const int &chunks_count) {
     auto file = fopen(file_name, "wb");
-    const int MYBUFSIZE = 10 * BUFSIZ;
     int buffer[MYBUFSIZE], write_size = 0;
-    buffer[write_size++] = size;
-    for (int i = 0; i < size; ++i) {
+    buffer[write_size++] = chunks_count;
+    buffer[write_size++] = datas_size;
+    for (int i = 0; i < datas_size; ++i) {
         auto data = datas[i];
         auto data_size = static_cast<int>(data->size());
         buffer[write_size++] = data_size;
@@ -19,14 +35,15 @@ using namespace std;
             for (const auto *data_map: {&data_maps.first, &data_maps.second}) {
                 int data_map_size = static_cast<int>(data_map->size());
                 buffer[write_size++] = data_map_size;
-                write_size = check_buffer(file, buffer, write_size);
+                check_buffer(file, buffer, write_size);
                 for (const auto &data_item_pair: *data_map) {
                     buffer[write_size++] = data_item_pair.first;
                     buffer[write_size++] = static_cast<int>(data_item_pair.second.size());
-                    write_size = check_buffer(file, buffer, write_size);
-                    for (const auto &data_item_item_item: data_item_pair.second) {
-                        buffer[write_size++] = data_item_item_item;
-                        write_size = check_buffer(file, buffer, write_size);
+                    check_buffer(file, buffer, write_size);
+                    for (int j = 0; j < data_item_pair.second.size();) {
+                        fill_dest_from_src(&data_item_pair.second[0], static_cast<int>(data_item_pair.second.size()), j, buffer, MYBUFSIZE,
+                                           write_size);
+                        check_buffer(file, buffer, write_size);
                     }
                 }
             }
@@ -36,25 +53,19 @@ using namespace std;
     fclose(file);
 }
 
-int check_buffer(FILE *file, const int *buffer, int write_size) {
-    if (write_size >= 9 * BUFSIZ) {
-        fwrite(buffer, static_cast<size_t>(write_size), sizeof(int), file);
-        write_size = 0;
-    }
-    return write_size;
-}
 
-[[maybe_unused]] vector<pair<map<int, vector<int>>, map<int, vector<int>>>> *read_vector_of_maps_from_file(char const *file_name) {
+[[maybe_unused]] vector<pair<vector<int *>, vector<int *>>> *read_data(char const *file_name, int *&all_file, int &chunks_count) {
     struct stat st{};
     auto file = fopen(file_name, "rb");
     if (!file || stat(file_name, &st) != 0)
         throw runtime_error(string("file ") + file_name + " is not present or not readable");
-    auto all_file = new int[st.st_size / 4];
+    all_file = new int[st.st_size / 4];
     fread(all_file, sizeof(int), static_cast<size_t>(st.st_size / 4), file);
     fclose(file);
     auto buffer_p = all_file;
+    chunks_count = *(buffer_p++);
     int data_size = *(buffer_p++);
-    auto result = new vector<pair<map<int, vector<int>>, map<int, vector<int>>>>[data_size];
+    auto result = new vector<pair<vector<int *>, vector<int *>>>[data_size];
     for (int i = 0; i < data_size; ++i) {
         int vec_size = *(buffer_p++);
         result[i].resize(vec_size);
@@ -64,25 +75,20 @@ int check_buffer(FILE *file, const int *buffer, int write_size) {
                 if (l == 1)
                     data_map = &result[i][j].second;
                 int map_size = *(buffer_p++);
+                (*data_map).resize(map_size);
                 for (int k = 0; k < map_size; ++k) {
-                    int first = *(buffer_p++);
-                    int second_size = *(buffer_p++);
-                    vector<int> second(second_size);
-                    for (int m = 0; m < second_size; ++m)
-                        second[m] = *(buffer_p++);
-                    (*data_map)[first] = std::move(second);
+                    (*data_map)[k] = buffer_p;
+                    buffer_p += buffer_p[1] + 2;
                 }
             }
         }
     }
-    delete[] all_file;
     return result;
 }
 
 
 [[maybe_unused]] void write_to_file(const char *const file_name, const vector<int> *data, const int size) {
     auto file = fopen(file_name, "wb");
-    const int MYBUFSIZE = 10 * BUFSIZ;
     int buffer[MYBUFSIZE], write_size = 0, last_data_size = -1, additional_zeros = 0;
     buffer[write_size++] = size;
     for (int i = 0; i < size; ++i) {

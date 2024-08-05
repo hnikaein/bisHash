@@ -22,7 +22,8 @@ extern Logger *logger;
 FamilyMinHash *family_min_hash;
 
 vector<Sequence> ref_genome, chunks, reads;
-vector<pair<map<int, vector<int>>, map<int, vector<int>>>> chunks_sketchs_CT_tree, chunks_sketchs_GA_tree;
+vector<pair<map<int, vector<int>>, map<int, vector<int>>>> chunks_sketchs_CT_tree_vector, chunks_sketchs_GA_tree_vector;
+vector<pair<vector<int *>, vector<int *>>> chunks_sketchs_CT_tree, chunks_sketchs_GA_tree;
 vector<vector<int>> reads_chunks;
 vector<vector<pair<int, bool>>> chunks_reads;
 vector<vector<pair<int, SamLine *>>> output_map;
@@ -35,7 +36,7 @@ BisHashArgs args;
 int log_level_power;
 int chunks_count;
 char *ref_genome_should_be_deleted, *reads_should_be_deleted;
-
+int *sketchs_should_be_deleted;
 
 template<typename T>
 void remove_vector(vector<T> &vec) {
@@ -48,15 +49,15 @@ int make_chunk_sketch(const int chunk_i) {
                                                        static_cast<int>(chunks[chunk_i].size),
                                                        SKETCH_MODE_WITH_C_T_CONVERSION);
     for (const auto &part: chunk_sketch_CT) {
-        chunks_sketchs_CT_tree[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
-        chunks_sketchs_CT_tree[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
+        chunks_sketchs_CT_tree_vector[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
+        chunks_sketchs_CT_tree_vector[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
     }
     auto chunk_sketch_GA = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
                                                        static_cast<int>(chunks[chunk_i].size),
                                                        SKETCH_MODE_WITH_G_A_CONVERSION);
     for (const auto &part: chunk_sketch_GA) {
-        chunks_sketchs_GA_tree[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
-        chunks_sketchs_GA_tree[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
+        chunks_sketchs_GA_tree_vector[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
+        chunks_sketchs_GA_tree_vector[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
     }
     return 1;
 }
@@ -67,21 +68,14 @@ void read_chunks() {
 }
 
 void prepare_ref_sketch() {
-    auto index_file_name = config_str + ".bshs";
+    auto index_file_name = config_str + ".bsh";
     add_time();
     if (args.read_index)
         try {
-            auto indexes = read_vector_of_maps_from_file(index_file_name.c_str());
+            auto indexes = read_data(index_file_name.c_str(), sketchs_should_be_deleted, chunks_count);
             chunks_sketchs_CT_tree = std::move(indexes[0]);
             chunks_sketchs_GA_tree = std::move(indexes[1]);
             delete[] indexes;
-            chunks_count = 0;
-            for (const auto &te: {&chunks_sketchs_CT_tree, &chunks_sketchs_GA_tree})
-                for (const auto &te1: *te)
-                    for (const auto &te2: {&te1.first, &te1.second})
-                        for (const auto &te3: *te2)
-                            chunks_count = max(chunks_count, *max_element(te3.second.begin(), te3.second.end()));
-            chunks_count++;
             logger->info("index read completed");
         } catch (...) {
             args.read_index = false;
@@ -89,17 +83,36 @@ void prepare_ref_sketch() {
     if (!args.read_index) {
         read_chunks();
         chunks_count = static_cast<int>(chunks.size());
-        chunks_sketchs_CT_tree.resize((int) pow(MAX_BASENUMBER, args.family_decompose_letters));
-        chunks_sketchs_GA_tree.resize((int) pow(MAX_BASENUMBER, args.family_decompose_letters));
+        chunks_sketchs_CT_tree_vector.resize((int) pow(MAX_BASENUMBER, args.family_decompose_letters));
+        chunks_sketchs_GA_tree_vector.resize((int) pow(MAX_BASENUMBER, args.family_decompose_letters));
         multiproc(args.threads_count, make_chunk_sketch, chunks_count);
-    }
-    add_time();
-    if (!args.read_index && args.write_index) {
-        vector<pair<map<int, vector<int>>, map<int, vector<int>>>> *indexes[] = {&chunks_sketchs_CT_tree, &chunks_sketchs_GA_tree};
-        write_to_file(index_file_name.c_str(), indexes, 2);
+        vector<pair<map<int, vector<int>>, map<int, vector<int>>>> *indexes[] = {&chunks_sketchs_CT_tree_vector,
+                                                                                 &chunks_sketchs_GA_tree_vector};
+        write_data(index_file_name.c_str(), indexes, 2,
+                   chunks_count); // TODO if args.write_index wrtie to real file, else write to virtual file
+        remove_vector(chunks_sketchs_CT_tree_vector);
+        remove_vector(chunks_sketchs_GA_tree_vector);
+        auto indexes2 = read_data(index_file_name.c_str(), sketchs_should_be_deleted, chunks_count);
+        chunks_sketchs_CT_tree = std::move(indexes2[0]);
+        chunks_sketchs_GA_tree = std::move(indexes2[1]);
+        delete[] indexes2;
     }
     add_time();
     logger->info("ref sketchs prepared: %sms: %d records", get_times_str(true), chunks_count);
+}
+
+inline int *find_in_vector(const vector<int *> &data, int find_what) {
+    int low = 0, high = static_cast<int>(data.size());
+    while (low < high) {
+        int mid = (high + low) / 2;
+        if (find_what > data[mid][0])
+            low = mid + 1;
+        if (find_what < data[mid][0])
+            high = mid;
+        if (find_what == data[mid][0])
+            return data[mid];
+    }
+    return nullptr;
 }
 
 int find_read_chunks(const int read_i) {
@@ -123,10 +136,20 @@ int find_read_chunks(const int read_i) {
         }
         for (const auto &read_sketch_i: *read_sketch) {
             set<int> matches;
-            for (const auto &chunk_i: (*chunks_sketchs_tree)[get<0>(read_sketch_i)].first[get<1>(read_sketch_i)])
-                matches.insert(chunk_i);
-            for (const auto &chunk_i: (*chunks_sketchs_tree)[get<0>(read_sketch_i)].second[get<2>(read_sketch_i)])
-                matches.insert(chunk_i);
+            auto candid_chunks = find_in_vector((*chunks_sketchs_tree)[get<0>(read_sketch_i)].first, get<1>(read_sketch_i));
+            if (candid_chunks != nullptr) {
+                candid_chunks += 1;
+                for (int i = 1; i <= candid_chunks[0]; ++i)
+                    matches.insert(candid_chunks[i]);
+            }
+
+            candid_chunks = find_in_vector((*chunks_sketchs_tree)[get<0>(read_sketch_i)].second, get<2>(read_sketch_i));
+            if (candid_chunks != nullptr) {
+                candid_chunks += 1;
+                for (int i = 1; i <= candid_chunks[0]; ++i)
+                    matches.insert(candid_chunks[i]);
+            }
+
             for (const auto &match: matches)
                 similarity_l[match] += 1;
         }
@@ -218,8 +241,9 @@ int main(int argc, char *argv[]) {
 
     reads_chunks.resize(reads.size());
     multiproc(args.threads_count, find_read_chunks, args.to_read, args.from_read);
-    remove_vector<pair<map<int, vector<int>>, map<int, vector<int>>>>(chunks_sketchs_CT_tree);
-    remove_vector<pair<map<int, vector<int>>, map<int, vector<int>>>>(chunks_sketchs_GA_tree);
+    remove_vector(chunks_sketchs_CT_tree);
+    remove_vector(chunks_sketchs_GA_tree);
+    delete[] sketchs_should_be_deleted;
     add_time();
     logger->info("find read chunks time: %d ms", last_time());
 
@@ -233,7 +257,7 @@ int main(int argc, char *argv[]) {
             }
             chunks_reads[read_chunk].emplace_back(i, is_ct);
         }
-    remove_vector<vector<int>>(reads_chunks);
+    remove_vector(reads_chunks);
     add_time();
     logger->info("assign reads to chunks: %d ms", last_time());
 
