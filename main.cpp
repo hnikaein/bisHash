@@ -43,21 +43,26 @@ void remove_vector(vector<T> &vec) {
     vector<T>().swap(vec);
 }
 
+pthread_mutex_t chunks_sketchs_CT_tree_vector_mutex, chunks_sketchs_GA_tree_vector_mutex;
 // Calculate the chunk sketch and add the chunk id to hashes that exist in chunk sketch
 int make_chunk_sketch(const int chunk_i) {
     auto chunk_sketch_CT = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
                                                        static_cast<int>(chunks[chunk_i].size),
                                                        SKETCH_MODE_WITH_C_T_CONVERSION);
     for (const auto &part: chunk_sketch_CT) {
+        pthread_mutex_lock(&chunks_sketchs_CT_tree_vector_mutex);
         chunks_sketchs_CT_tree_vector[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
         chunks_sketchs_CT_tree_vector[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
+        pthread_mutex_unlock(&chunks_sketchs_CT_tree_vector_mutex);
     }
     auto chunk_sketch_GA = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
                                                        static_cast<int>(chunks[chunk_i].size),
                                                        SKETCH_MODE_WITH_G_A_CONVERSION);
     for (const auto &part: chunk_sketch_GA) {
+        pthread_mutex_lock(&chunks_sketchs_GA_tree_vector_mutex);
         chunks_sketchs_GA_tree_vector[get<0>(part)].first[get<1>(part)].push_back(chunk_i);
         chunks_sketchs_GA_tree_vector[get<0>(part)].second[get<2>(part)].push_back(chunk_i);
+        pthread_mutex_unlock(&chunks_sketchs_GA_tree_vector_mutex);
     }
     return 1;
 }
