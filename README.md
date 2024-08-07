@@ -18,37 +18,37 @@ Before installing bisHash, ensure you have the following prerequisites:
 
 1. Clone the repository:
 
-   \`\`\`bash
+   ```bash
    git clone https://github.com/hnikaein/bisHash.git
    cd bisHash
-   \`\`\`
+   ```
 
 2. Create a build directory and navigate into it:
 
-   \`\`\`bash
+   ```bash
    mkdir build
    cd build
-   \`\`\`
+   ```
 
 3. Run CMake to configure the build:
 
-   \`\`\`bash
+   ```bash
    cmake ..
-   \`\`\`
+   ```
 
 4. Compile the source code:
 
-   \`\`\`bash
+   ```bash
    make
-   \`\`\`
+   ```
 
 ## Usage
 
 Once maked, you can run bisHash with the following command:
 
-\`\`\`bash
+```bash
 ./bisHash -r reference_file -q query_file -o output_file [OPTIONS]
-\`\`\`
+```
 
 
 ### Command Line Options
@@ -80,9 +80,9 @@ Once maked, you can run bisHash with the following command:
 
 ### Example
 
-\`\`\`bash
+```bash
 ./bisHash -r hg19.fa -q sample_reads.fq -o aligned.sam -t 4
-\`\`\`
+```
 
 This command aligns the reads in `sample_reads.fq` to the `hg19.fa` reference genome using 4 threads and outputs the results to `aligned.sam`.
 
