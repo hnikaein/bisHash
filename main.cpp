@@ -121,6 +121,8 @@ inline int *find_in_vector(const vector<int *> &data, int find_what) {
 }
 
 int find_read_chunks(const int read_i) {
+    if (read_i % log_level_power == 0)
+        logger->info("find_read_chunks read %d", read_i);
     auto read = &reads[read_i];
 
     auto read_sketch_ct = family_min_hash->get_sketch(read->seq_str, static_cast<int>(read->size),
