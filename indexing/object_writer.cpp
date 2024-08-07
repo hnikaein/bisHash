@@ -21,9 +21,15 @@ inline void check_buffer(FILE *file, const int *buffer, int &write_size) {
     }
 }
 
-[[maybe_unused]] void write_data(const char *file_name, vector<pair<map<int, vector<int>>, map<int, vector<int>>>> **datas, int datas_size,
-                                 const int &chunks_count) {
+void write_data(const char *file_name, vector<pair<map<int, vector<int>>, map<int, vector<int>>>> **datas, int datas_size,
+                const int &chunks_count) {
     auto file = fopen(file_name, "wb");
+    write_data(file, datas, datas_size, chunks_count);
+    fclose(file);
+}
+
+void write_data(FILE *file, vector<pair<map<int, vector<int>>, map<int, vector<int>>>> **datas, int datas_size,
+                const int &chunks_count) {
     int buffer[MYBUFSIZE], write_size = 0;
     buffer[write_size++] = chunks_count;
     buffer[write_size++] = datas_size;
@@ -50,18 +56,21 @@ inline void check_buffer(FILE *file, const int *buffer, int &write_size) {
         }
     }
     fwrite(buffer, static_cast<size_t>(write_size), sizeof(int), file);
-    fclose(file);
 }
 
-
-[[maybe_unused]] vector<pair<vector<int *>, vector<int *>>> *read_data(char const *file_name, int *&all_file, int &chunks_count) {
-    struct stat st{};
+vector<pair<vector<int *>, vector<int *>>> *read_data(char const *file_name, int *&all_file, int &chunks_count) {
     auto file = fopen(file_name, "rb");
+    struct stat st{};
     if (!file || stat(file_name, &st) != 0)
         throw runtime_error(string("file ") + file_name + " is not present or not readable");
     all_file = new int[st.st_size / 4];
     fread(all_file, sizeof(int), static_cast<size_t>(st.st_size / 4), file);
     fclose(file);
+    auto result = read_data(all_file, chunks_count);
+    return result;
+}
+
+vector<pair<vector<int *>, vector<int *>>> *read_data(int *all_file, int &chunks_count) {
     auto buffer_p = all_file;
     chunks_count = *(buffer_p++);
     int data_size = *(buffer_p++);

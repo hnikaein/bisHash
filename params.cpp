@@ -22,7 +22,7 @@ CompleteOption complete_options[] =
                 {'f', required_argument, "from-read",                "Starting read for matching reads, inclusive (default: 0)."},
                 {'e', required_argument, "to-read",                  "Ending read for matching reads, exclusive (default: INT_MAX)."},
                 {'n', no_argument,       "no-read-index",            "Skip reading index (default: not set)."},
-                {'w', no_argument,       "no-write-index",           "Skip writing index (default: not set)."},
+//                {'w', no_argument,       "no-write-index",           "Skip writing index (default: not set)."},
                 {'i', no_argument,       "only-create-index",        "Create index mode (default: not set)."},
                 {'M', required_argument, "alt-match-ratio",          "Penalty ratio for alternative matches (default: 0.98)."},
                 {'A', required_argument, "match-score",              "Score for a match (default: 5)."},
@@ -30,14 +30,16 @@ CompleteOption complete_options[] =
                 {'O', required_argument, "gap-open-penalty",         "Penalty for gap opening (default: 5)."},
                 {'E', required_argument, "gap-extend-penalty",       "Penalty for gap extension (default: 3)."},
                 {'D', required_argument, "family-decompose-letters", "Number of basepairs for decomposing family minhash (default: 5)."},
-                {'K', required_argument, "kmer-length",              "Length of k-mer for family minhash evaluation (default: 20)."},
-                {'S', required_argument, "chunk-size",               "Size of reference chunks (default: 7000)."},
-                {'V', required_argument, "chunk-overlap",            "Overlap between chunks to ensure reads are contained (default: 2000)."},
+                {'K', required_argument, "kmer-length",              "Length of k-mer for family minhash evaluation (default: 16)."},
+                {'S', required_argument, "chunk-size",               "Size of reference chunks (default: 1000)."},
+                {'V', required_argument, "chunk-overlap",            "Overlap between chunks to ensure reads are contained (default: 300)."},
                 {'h', no_argument,       "help",                     "Print this help message."},
         };
 
 void print_usage() {
-    printf("bisHash 0.6.0\n");
+    printf("bisHash ");
+    printf(VERSION);
+    printf("\n");
     printf("Usage: bisHash -r reference_file -q query_file -o output_file [OPTIONS]\n");
     printf("Usage: bisHash -i -r reference_file [OPTIONS]\n");
     printf("\n");

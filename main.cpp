@@ -44,6 +44,7 @@ void remove_vector(vector<T> &vec) {
 }
 
 pthread_mutex_t chunks_sketchs_CT_tree_vector_mutex, chunks_sketchs_GA_tree_vector_mutex;
+
 // Calculate the chunk sketch and add the chunk id to hashes that exist in chunk sketch
 int make_chunk_sketch(const int chunk_i) {
     auto chunk_sketch_CT = family_min_hash->get_sketch(chunks[chunk_i].seq_str,
@@ -93,8 +94,7 @@ void prepare_ref_sketch() {
         multiproc(args.threads_count, make_chunk_sketch, chunks_count);
         vector<pair<map<int, vector<int>>, map<int, vector<int>>>> *indexes[] = {&chunks_sketchs_CT_tree_vector,
                                                                                  &chunks_sketchs_GA_tree_vector};
-        write_data(index_file_name.c_str(), indexes, 2,
-                   chunks_count); // TODO if args.write_index wrtie to real file, else write to virtual file
+        write_data(index_file_name.c_str(), indexes, 2, chunks_count);
         remove_vector(chunks_sketchs_CT_tree_vector);
         remove_vector(chunks_sketchs_GA_tree_vector);
         auto indexes2 = read_data(index_file_name.c_str(), sketchs_should_be_deleted, chunks_count);
