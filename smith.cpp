@@ -17,7 +17,7 @@ inline int write_cigar_block(int last_cigar_char_len, char last_cigar_char, char
 void align_chunk_reads_phase2(const Sequence &chunk, const vector<pair<int, bool>> &chunk_reads, const vector<Sequence> &reads,
                               const unsigned long chr_size, const PenaltyConfig penalty_config,
                               vector<vector<pair<int, SamLine *>>> &output_map, vector<int> &output_map_least_penalty) {
-    char reverse_cigar[2 * MAX_READ_LEN], cigar[2 * MAX_READ_LEN];
+    char reverse_cigar[3 * MAX_READ_LEN], cigar[6 * MAX_READ_LEN];
     vector<vector<int>> penalty(MAX_READ_LEN + 10), operation(MAX_READ_LEN + 10), start(MAX_READ_LEN + 10);
 
     add_time();
