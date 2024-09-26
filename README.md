@@ -86,6 +86,16 @@ Once maked, you can run bisHash with the following command:
 
 This command aligns the reads in `sample_reads.fq` to the `hg19.fa` reference genome using 4 threads and outputs the results to `aligned.sam`.
 
+## Simulation Scripts
+
+This project includes simulation scripts located in the simulation folder, which are useful for generating test inputs and comparing results.
+
+### Running Simulations
+1. `runAlgos.sh`: This script simulates inputs and runs various tools alongside bisHash, processing the results generated. You can configure the parameters at the beginning of this script.
+2. `run_sam_read_compare.sh`: This script processes the output from runAlgos.sh to create comparison results, allowing for an evaluation of bisHash’s performance against other tools. Configuration options can also be set at the beginning of this script.
+
+**Make sure to review and adjust the configuration parameters in both scripts to fit your testing requirements.**
+
 ## Contributing
 
 Contributions to the project are welcome! Please follow these steps to contribute:
